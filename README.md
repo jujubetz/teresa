@@ -12,29 +12,32 @@ It uses a client-server model: the client sends high level commands (create appl
 
 Server requirements:
 
-- Kubernetes cluster
+- A working Kubernetes cluster
 
-- database backend to store users and teams (SQLite or MySQL)
+- Storage to save build artifacts: AWS S3 or minio
 
-- storage for build artifacts (AWS S3 or minio)
+- RSA keys for signing the authentication token
 
-- rsa keys for token signing
+- Database backend to store teams and users. You probably want to persist your data, so make sure to install `MySQL` through: `helm install --name teresa stable/mysql`, otherwise teresa will use `sqlite` as the storage engine and you'll lose teams and users data when teresa's pod restarts
 
-- (optional) TLS encription key and certificate
+- Optional TLS certificate and encription key
 
-The recommended installation method uses the [helm](https://github.com/kubernetes/helm) package manager,
-for instance to install using S3 and MySQL (recommended):
+We recommend you install Teresa using the [helm](https://github.com/kubernetes/helm) package manager. Following is a working example assuming you're running the Kubernetes cluster on AWS, on `us-east-1` region and is using `MySQL` to store Teresa's users and teams.
+
+Make sure to replace the dummy AWS credentials with real ones, as well as review the other varibles you might want to customize to suit your needs, such as the S3 bucket name, AWS region and so on.
 
     $ openssl genrsa -out teresa.rsa
     $ export TERESA_RSA_PRIVATE=`base64 teresa.rsa`  # use base64 -w0 on Linux
     $ openssl rsa -in teresa.rsa -pubout > teresa.rsa.pub
     $ export TERESA_RSA_PUBLIC=`base64 teresa.rsa.pub`
+    $ export AWS_ACCESS_KEY_ID=foo
+    $ export AWS_SECRET_ACCESS_KEY=bar
     $ helm repo add luizalabs http://helm.k8s.magazineluiza.com
     $ helm install luizalabs/teresa \
         --set rsa.private=$TERESA_RSA_PRIVATE \
         --set rsa.public=$TERESA_RSA_PUBLIC \
-        --set aws.key.access=xxxxxxxx \
-        --set aws.key.secret=xxxxxxxx \
+        --set aws.key.access=$AWS_ACCESS_KEY_ID \
+        --set aws.key.secret=$AWS_SECRET_ACCESS_KEY \
         --set aws.region=us-east-1 \
         --set aws.s3.bucket=teresa \
         --set db.name=teresa \
@@ -55,7 +58,7 @@ To create an admin user you need access to the environment where the Teresa
 server is running (often a Kubernetes POD in namespace `teresa`):
 
     $ export POD_NAME=$(kubectl get pods --namespace teresa -l "app=teresa" -o jsonpath="{.items[0].metadata.name}")
-    $ kubectl exec $POD_NAME -it teresa-server create-super-user --email admin_email --password xxxxxxxx --namespace teresa
+    $ kubectl exec $POD_NAME --namespace=teresa -it -- teresa-server create-super-user --email admin_email --password xxxxxxxx
 
 Now you can start creating other users and teams. First, you need to get the
 Teresa endpoint created by Kubernetes and configure the client (get it

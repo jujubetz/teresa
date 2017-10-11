@@ -1,52 +1,42 @@
-# Teresa
-
-[Teresa](https://github.com/luizalabs/teresa) is an extremely simple platform as a service that runs on top of [Kubernetes](https://github.com/kubernetes/kubernetes).
-
-## TL;DR;
-
-```console
-$ openssl genrsa -out teresa.rsa
-$ export TERESA_RSA_PRIVATE=`base64 teresa.rsa`  # use base64 -w0 on Linux
-$ openssl rsa -in teresa.rsa -pubout > teresa.rsa.pub
-$ export TERESA_RSA_PUBLIC=`base64 teresa.rsa.pub`
-$ helm repo add luizalabs http://helm.k8s.magazineluiza.com
-$ helm install luizalabs/teresa \
-  --set rsa.private=$TERESA_RSA_PRIVATE \
-  --set rsa.public=$TERESA_RSA_PUBLIC \
-  --set aws.key.access=XXXXXXXXXXXX \
-  --set aws.key.secret=XXXXXXXXXXXX \
-  --set aws.s3.bucket=teresa
-```
-
-## Introduction
+# Introduction
 
 This chart bootstraps a [Teresa](https://github.com/luizalabs/teresa) deployment on a [Kubernetes](http://kubernetes.io) cluster using the [Helm](https://helm.sh) package manager.
 
 
 ## Installing the Chart
-To install the chart with the release name `my-release` in namespace `my-teresa`:
+Install a `MySQL` database to store users and teams:
+
+    $ helm install --name teresa stable/mysql
+
+To install the chart with the release name `my-release` in namespace `my-teresa`, first create the rsa keys and set some environment variables you'll use:
 
 
-```console
-$ openssl genrsa -out teresa.rsa
-$ openssl rsa -in teresa.rsa -pubout > teresa.rsa.pub
-$ export TERESA_RSA_PRIVATE=`base64 teresa.rsa`
-$ export TERESA_RSA_PUBLIC=`base64 teresa.rsa.pub`
+    $ openssl genrsa -out teresa.rsa
+    $ export TERESA_RSA_PRIVATE=`base64 teresa.rsa`  # use base64 -w0 on Linux
+    $ openssl rsa -in teresa.rsa -pubout > teresa.rsa.pub
+    $ export TERESA_RSA_PUBLIC=`base64 teresa.rsa.pub`
+    $ export AWS_ACCESS_KEY_ID=foo
+    $ export AWS_SECRET_ACCESS_KEY=bar
 
-```
-This create a rsa cert and export it in base64 to environment variables.
 
-```console
-$ helm repo add luizalabs http://helm.k8s.magazineluiza.com
-$ helm install luizalabs/teresa \
-  --name my-release \
-  --namespace my-teresa \
-  --set rsa.private=$TERESA_RSA_PRIVATE \
-  --set rsa.public=$TERESA_RSA_PUBLIC \
-  --set aws.key.access=XXXXXXXXXXXX \
-  --set aws.key.secret=XXXXXXXXXXXX \
-  --set aws.s3.bucket=teresa
-```
+Then add Teresa helm repository and install it:
+
+
+    $ helm repo add luizalabs http://helm.k8s.magazineluiza.com
+    $ helm install luizalabs/teresa \
+    	--namespace my-teresa \
+        --set rsa.private=$TERESA_RSA_PRIVATE \
+        --set rsa.public=$TERESA_RSA_PUBLIC \
+        --set aws.key.access=$AWS_ACCESS_KEY_ID \
+        --set aws.key.secret=$AWS_SECRET_ACCESS_KEY \
+        --set aws.region=us-east-1 \
+        --set aws.s3.bucket=teresa \
+        --set db.name=teresa \
+        --set db.hostname=dbhostname \
+        --set db.username=teresa \
+        --set db.password=xxxxxxxx
+
+
 This deploy teresa to cluster with default configuration.
 The [configuration](#configuration) section lists the parameters that can be configured during installation.
 
