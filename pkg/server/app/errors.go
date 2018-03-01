@@ -13,4 +13,5 @@ var (
 	ErrInvalidLimits     = status.Errorf(codes.InvalidArgument, "Invalid Limits")
 	ErrInvalidAutoscale  = status.Errorf(codes.InvalidArgument, "Invalid Autoscale")
 	ErrInvalidEnvVarName = status.Errorf(codes.InvalidArgument, "Invalid Env Var Name")
+	ErrInvalidSecretName = status.Errorf(codes.InvalidArgument, "Invalid Secret Name")
 )

@@ -36,6 +36,7 @@ type App struct {
 	Limits      *Limits    `json:"-"`
 	Autoscale   *Autoscale `json:"-"`
 	EnvVars     []*EnvVar  `json:"envVars"`
+	Secrets     []string   `json:"secrets"`
 }
 
 type Pod struct {
@@ -245,6 +246,32 @@ func unsetEnvVars(app *App, evs []string) {
 		for i, tmp := range app.EnvVars {
 			if tmp.Key == ev {
 				app.EnvVars = append(app.EnvVars[:i], app.EnvVars[i+1:]...)
+				break
+			}
+		}
+	}
+}
+
+func setSecretsOnApp(app *App, secrets []string) {
+	for _, secret := range secrets {
+		found := false
+		for _, tmp := range app.Secrets {
+			if tmp == secret {
+				found = true
+				break
+			}
+		}
+		if !found {
+			app.Secrets = append(app.Secrets, secret)
+		}
+	}
+}
+
+func unsetSecretsOnApp(app *App, secrets []string) {
+	for _, secret := range secrets {
+		for i := range app.Secrets {
+			if app.Secrets[i] == secret {
+				app.Secrets = append(app.Secrets[:i], app.Secrets[i+1:]...)
 				break
 			}
 		}

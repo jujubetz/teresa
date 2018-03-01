@@ -26,6 +26,8 @@ type Operations interface {
 	HasPermission(user *database.User, appName string) bool
 	SetEnv(user *database.User, appName string, evs []*EnvVar) error
 	UnsetEnv(user *database.User, appName string, evs []string) error
+	SetSecret(user *database.User, appName string, secrets []*EnvVar) error
+	UnsetSecret(user *database.User, appName string, secrets []string) error
 	List(user *database.User) ([]*AppListItem, error)
 	ListByTeam(teamName string) ([]string, error)
 	SetAutoscale(user *database.User, appName string, as *Autoscale) error
@@ -44,7 +46,9 @@ type K8sOperations interface {
 	PodLogs(namespace, podName string, opts *LogOptions) (io.ReadCloser, error)
 	CreateNamespace(app *App, userEmail string) error
 	CreateQuota(app *App) error
+	GetSecret(namespace, secretName string) (map[string][]byte, error)
 	CreateSecret(appName, secretName string, data map[string][]byte) error
+	CreateOrUpdateSecret(appName, secretName string, data map[string][]byte) error
 	CreateOrUpdateAutoscale(app *App) error
 	AddressList(namespace string) ([]*Address, error)
 	Status(namespace string) (*Status, error)
@@ -59,6 +63,8 @@ type K8sOperations interface {
 	DeleteCronJobEnvVars(namespace, name string, evNames []string) error
 	CreateOrUpdateDeployEnvVars(namespace, name string, evs []*EnvVar) error
 	CreateOrUpdateCronJobEnvVars(namespace, name string, evs []*EnvVar) error
+	CreateOrUpdateDeploySecretEnvVars(namespace, name, secretName string, secrets []string) error
+	CreateOrUpdateCronJobSecretEnvVars(namespace, name, secretName string, secrets []string) error
 	DeleteNamespace(namespace string) error
 	NamespaceListByLabel(label, value string) ([]string, error)
 	DeploySetReplicas(namespace, name string, replicas int32) error
@@ -76,6 +82,7 @@ const (
 	TeresaAnnotation = "teresa.io/app"
 	TeresaTeamLabel  = "teresa.io/team"
 	TeresaLastUser   = "teresa.io/last-user"
+	TeresaAppSecrets = "teresa-secrets"
 )
 
 func (ops *AppOperations) HasPermission(user *database.User, appName string) bool {
@@ -345,6 +352,93 @@ func (ops *AppOperations) UnsetEnv(user *database.User, appName string, evNames 
 	}
 
 	unsetEnvVars(app, evNames)
+
+	if err := ops.SaveApp(app, user.Email); err != nil {
+		return teresa_errors.NewInternalServerError(err)
+	}
+
+	return nil
+}
+
+func (ops *AppOperations) SetSecret(user *database.User, appName string, secrets []*EnvVar) error {
+	names := make([]string, len(secrets))
+	for i := range secrets {
+		names[i] = secrets[i].Key
+	}
+	if err := checkForProtectedEnvVars(names); err != nil {
+		return err
+	}
+
+	app, err := ops.CheckPermAndGet(user, appName)
+	if err != nil {
+		return err
+	}
+
+	s, err := ops.kops.GetSecret(appName, TeresaAppSecrets)
+	if err != nil {
+		if !ops.kops.IsNotFound(err) {
+			return teresa_errors.NewInternalServerError(err)
+		}
+		s = make(map[string][]byte)
+	}
+
+	for _, secret := range secrets {
+		s[secret.Key] = []byte(secret.Value)
+	}
+
+	if err := ops.kops.CreateOrUpdateSecret(appName, TeresaAppSecrets, s); err != nil {
+		if ops.kops.IsInvalid(err) {
+			return ErrInvalidSecretName
+		}
+		return teresa_errors.NewInternalServerError(err)
+	}
+
+	if app.ProcessType == ProcessTypeCron {
+		err = ops.kops.CreateOrUpdateCronJobSecretEnvVars(appName, appName, TeresaAppSecrets, names)
+	} else {
+		err = ops.kops.CreateOrUpdateDeploySecretEnvVars(appName, appName, TeresaAppSecrets, names)
+	}
+
+	if err != nil {
+		if ops.kops.IsInvalid(err) {
+			return ErrInvalidSecretName
+		} else if !ops.kops.IsNotFound(err) {
+			return teresa_errors.NewInternalServerError(err)
+		}
+	}
+
+	setSecretsOnApp(app, names)
+
+	if err := ops.SaveApp(app, user.Email); err != nil {
+		return teresa_errors.NewInternalServerError(err)
+	}
+
+	return nil
+}
+
+func (ops *AppOperations) UnsetSecret(user *database.User, appName string, secrets []string) error {
+	if err := checkForProtectedEnvVars(secrets); err != nil {
+		return err
+	}
+
+	app, err := ops.CheckPermAndGet(user, appName)
+	if err != nil {
+		return err
+	}
+
+	if app.ProcessType == ProcessTypeCron {
+		err = ops.kops.DeleteCronJobEnvVars(appName, appName, secrets)
+	} else {
+		err = ops.kops.DeleteDeployEnvVars(appName, appName, secrets)
+	}
+
+	if err != nil {
+		if !ops.kops.IsNotFound(err) {
+			return teresa_errors.NewInternalServerError(err)
+		}
+	}
+
+	unsetSecretsOnApp(app, secrets)
 
 	if err := ops.SaveApp(app, user.Email); err != nil {
 		return teresa_errors.NewInternalServerError(err)
